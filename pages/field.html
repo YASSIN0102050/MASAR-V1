@@ -429,6 +429,21 @@ async function renderPlayer(courseId) {
   watchedSecs=prog.watched_seconds||0;
   var notes=[];
   if(currentUser){try{notes=await API.get('/api/notes/'+c.id);}catch(e){}}
+  var comments=[];
+  try{comments=await fetch('/api/comments/'+c.id).then(function(r){return r.json();});}catch(e){}
+  var commentsHtml=comments.length?comments.map(function(cm){
+    return '<div style="padding:12px 0;border-bottom:1px solid #f5f5f5" id="cm-'+cm.id+'">'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'+
+        '<span style="font-size:12px;font-weight:700">'+cm.user_name+'</span>'+
+        '<span style="font-size:11px;color:#999">'+cm.created_at.slice(0,10)+'</span>'+
+      '</div>'+
+      '<div style="font-size:13px;line-height:1.6;margin-bottom:6px">'+cm.content+'</div>'+
+      '<div style="display:flex;gap:12px;font-size:11px;color:#999">'+
+        '<span style="cursor:pointer" onclick="likeComment('+cm.id+',this)">👍 '+cm.likes+'</span>'+
+        (currentUser && currentUser.id===cm.user_id?'<span style="cursor:pointer;color:#c0392b" onclick="deleteComment('+cm.id+')">حذف</span>':'')+
+      '</div>'+
+    '</div>';
+  }).join(''):'<div style="font-size:13px;color:#999;text-align:center;padding:16px">لا توجد تعليقات بعد — كن الأول!</div>';
   var completeBanner=prog.completed?'<div class="complete-banner">تم إتمام هذا الكورس! <a href="/pages/certificate.html?course='+encodeURIComponent(c.title)+'&field='+encodeURIComponent((meta&&meta.title)||c.field)+'" style="color:#0a6640;text-decoration:underline">احصل على شهادتك</a></div>':'';
   var notesPanel=!currentUser?
     '<div style="font-size:12px;color:#666;text-align:center;padding:24px"><a href="/pages/login.html" style="color:#0056d2;font-weight:600">سجّل دخول</a> عشان تكتب ملاحظات</div>':
@@ -463,6 +478,19 @@ async function renderPlayer(courseId) {
           '</button>'+
           '<button class="btn-save'+(savedSet.has(c.id)?' saved':'')+'" id="sv-'+c.id+'" onclick="toggleSave(\''+c.id+'\',this)">'+(savedSet.has(c.id)?'محفوظ':'حفظ الكورس')+'</button>'+
           '<button class="btn-outline" onclick="location.href=\'/pages/field.html?f='+c.field+'&sub='+c.sub+'\'">الرجوع</button>'+
+        '</div>'+
+        '<div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:16px;margin-bottom:16px">'+
+          '<div style="font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:6px">'+
+            '<svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:#0056d2"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>'+
+            'تعليقات الطلاب'+
+          '</div>'+
+          (currentUser ?
+            '<div style="display:flex;gap:8px;margin-bottom:14px">'+
+              '<textarea id="comment-txt" style="flex:1;border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;direction:rtl;outline:none;min-height:60px" placeholder="شارك رأيك أو سؤالك..."></textarea>'+
+              '<button onclick="postComment(\''+c.id+'\')" style="background:#0056d2;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;align-self:flex-end;cursor:pointer">نشر</button>'+
+            '</div>'
+          : '<div style="font-size:13px;color:#666;margin-bottom:14px"><a href="/pages/login.html" style="color:#0056d2;font-weight:600">سجّل دخول</a> عشان تعلّق</div>') +
+          '<div id="comments-list">'+commentsHtml+'</div>'+
         '</div>'+
       '</div>'+
       '<div style="border-right:1px solid #e0e0e0;display:flex;flex-direction:column;height:calc(100vh - 121px);position:sticky;top:60px">'+
@@ -538,6 +566,34 @@ async function markComplete(courseId,field,sub,title,level,duration) {
     if(btn){btn.textContent='مكتمل';btn.style.background='#0a6640';}
     setTimeout(function(){location.reload();},1500);
   }catch(e){showToast(e.message);}
+}
+
+async function postComment(courseId) {
+  var txt = document.getElementById('comment-txt');
+  if (!txt || !txt.value.trim()) return;
+  try {
+    await API.post('/api/comments', { course_id: courseId, content: txt.value.trim() });
+    txt.value = '';
+    showToast('تم نشر تعليقك');
+    setTimeout(function() { location.reload(); }, 800);
+  } catch(e) { showToast(e.message); }
+}
+
+async function likeComment(id, el) {
+  if (!currentUser) { showToast('سجّل دخول أولاً'); return; }
+  try {
+    var res = await API.post('/api/comments/' + id + '/like');
+    var count = parseInt(el.textContent.replace('👍 ', ''));
+    el.textContent = '👍 ' + (res.liked ? count + 1 : count - 1);
+  } catch(e) {}
+}
+
+async function deleteComment(id) {
+  try {
+    await API.delete('/api/comments/' + id);
+    var el = document.getElementById('cm-' + id);
+    if (el) el.remove();
+  } catch(e) {}
 }
 
 window.addEventListener('beforeunload',function(){if(trackTimer)clearInterval(trackTimer);});
